@@ -1,0 +1,830 @@
+#shinyServer
+#setwd("C:/users/mtsai/desktop")
+library(gtools)
+library(magrittr)
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(GGally)
+source(file.path("C:","users","mtsai","desktop","shaokui","common.r"))
+
+stat.func <-function(x) c(min(x,na.rm=T),mean(x,na.rm=T),max(x,na.rm=T))
+tmax.calc <- function(TIME,DV) TIME[which.max(DV)]
+auc.calc <- function(TIME,DV) {n <- length(unique(TIME)); sum(sapply(1:(n-1), FUN=function(x) {0.5*(TIME[x+1]-TIME[x])*(DV[x+1]+DV[x])}))}
+factorize <- function(x) if(length(levels(as.factor(as.character(x))))<=8) x <- factor(x) else as.numeric(x)
+pctcv.calc <- function(x) sd(x)/mean(x)*100
+
+
+ui <- fluidPage(
+      fluidRow(
+        column(1,img(src="PMX.jpg",height=50,width=75),align="left"),       
+        column(10,titlePanel("Pharmacometric Web Application:  Simple Sampling Strategy")),
+        column(1,img(src="Takeda.jpg",height=50,width=125),align="right")
+      ),
+      fluidRow(column(12, tabsetPanel(
+        tabPanel("Information",     
+          h3(HTML(paste(tags$b("Objective:"),("This web application provides an interactive interface to review pharmacokinetic data and enable a simple sampling strategy.")))),
+          br(),
+          h3(HTML(paste(tags$b("Background:"),h4("During drug development, there are many instances, particularly in late development, when it is not possible to have a robust pharmacokinetic sampling scheme to characterize the full PK profile that is often performed in early development, considering the significant patient burden, large time investment to collect samples, and the associated costs of measuring plasma concentrations.  So, it is important to identify the appropriate times for collecting a limited number of blood samples in patients such that the exposure can be determined.  Different approaches for assessing this include:")))),
+          tags$ul(
+            tags$li(h4(HTML(paste(tags$b("Optimal Sampling Strategy"),(": C and D-optimality strategies minimize various scalar functions of the covariance matrix of the parameter estimates.  But this approach requires model development, which can be time-consuming, such that sampling schedule can be optimized for a given value of model parameters"))))),
+            tags$li(h4(HTML(paste(tags$b("Limited Sampling Strategy"),(": Multiple linear regression is used to describe Cmax or AUC as a linear function of several concentration-timepoints, choosing the best subset of time points that describe the pharmacokinetic parameter of interest.  This approach assumes a linear combination of timepoints."))))),            
+            tags$li(h4(HTML(paste(tags$b("Simple Sampling Strategy"),(": This brute force approach calculates Cmax or AUC  for every permutation of timepoints, choosing the best subset of time points that describe the pharmacokinetic parameter of interest.  No assumptions are required, but this approach can be time-consuming.")))))         
+          ),  
+          br(),
+          h3(HTML(paste(tags$b("Tabs:")))),
+          tags$ul(
+            tags$li(h4(HTML(paste(tags$b("Data Load:"),("select data file for evaluation; a brief data summary is provided"))))),
+            tags$li(h4(HTML(paste(tags$b("Data Process:"),("map key data variables; a modified dataset can be generated, based on filter and sort conditions"))))),
+            tags$li(h4(HTML(paste(tags$b("Data Table:"),("data is presented in a tabular format with sort, filter, and search functions"))))),
+            tags$li(h4(HTML(paste(tags$b("Data Plot:"),("data is presented in a graph with highlight, zoom, and paneling functions for data point identification"))))),
+            tags$li(h4(HTML(paste(tags$b("Data Evaluation:"),("data is analyzed to present user with permuatation of timepoints that meet user criteria which includes number of timepoints, %error in Cmax, and %error in AUC")))))
+          ),
+          br(),
+          h3(HTML(paste(tags$b("Author:"),("Max Tsai")))),
+          h4(HTML(paste(tags$b("Acknowledgements:"),("Shaokui Ge for his contributions to this application")))),
+          br(),
+          h3(HTML(paste(tags$b("Version History:")))),
+          tags$ul(
+            tags$li(h4(HTML(paste(tags$b("v1.0:"),("web application is launched"))))),
+            tags$li(h4(HTML(paste(tags$b("v1.1:"),("added a mean line to plot and allow user to specify specific timepoints for evaluation"))))),
+            tags$li(h4(HTML(paste(tags$b("v1.2:"),("allow axis to vary, based on data range during stratification"))))),
+            tags$li(h4(HTML(paste(tags$b("v1.5:"),("major plotting additions:  1) enabled histograms (plus binwidth specifications), barplots, boxplots to be created; 2) enable conversion of variables to categorical or continuous; 3) added line options of linear regression (plus r2 value), loess smoother, or reference lines; 4) added axis options for log scale, reverse scale, and axis switching; 5) added point option to enable jitter"))))),
+            tags$li(h4(HTML(paste(tags$b("v1.7"),("added tab for data exploration"))))),
+            tags$li(h4(HTML(paste(tags$b("v1.9"),("calculated NCA parameters")))))
+          )
+          #h5(HTML(paste(tags$b("References:")))),
+          #tags$ul(
+          #  tags$li(h6("Population pharmacokinetics and limited sampling strategy for first-line tuberculosis drugs and moxifloxacin. Magis-Escurra C, et al. Int J Antimicrob Agents. 2014 Sep;44(3):229-34")),
+          #  tags$li(h6("Limited sampling strategy for predicting area under the concentration-time curve for mycophenolic Acid in chinese adults receiving mycophenolate mofetil and tacrolimus early after renal transplantation. Cai W, et al. Ther Drug Monit. 2015 Jun;37(3):304-10")),
+          #  tags$li(h6("A limited sampling strategy for estimation of the area under the plasma concentration-time curve of gefitinib. Miura M, et al Ther Drug Monit. 2014 Feb;36(1):24-9.")),
+          #  tags$li(h6("Clinical usefulness of limited sampling strategies for estimating AUC of proton pump inhibitors. Niioka T. Yakugaku Zasshi. 2011 Mar;131(3):407-13."))  
+          #)  
+        ),  
+        ############################################################################################################################
+        ############################################################################################################################
+        tabPanel("Data Load",
+          fluidRow(
+            column(3, wellPanel(
+              fileInput("file", p('Please select file (csv default)'), multiple=TRUE,
+                        accept=c(".csv","text/comma-separated-values,text/plain")),
+              hr(),
+              tags$b("File import options:"),
+              checkboxInput("header", "Header (Y/N)", TRUE),
+              checkboxInput("rownames", "Row names (Y/N)", FALSE),
+              checkboxInput("strings", "Strings as Factors (Y/N)", FALSE),
+              checkboxInput("nonmem", "NONMEM-formatted (Y/N)", FALSE),
+              conditionalPanel("input.nonmem==true",textInput("na", "Missing Values Designation", value=".")),
+              radioButtons("sep","Select delimiter:", c(Comma=',', Semicolon=';', Tab='\t', Space=' ', Pipe='|'), ','),
+              radioButtons('quote', 'Select quote style:',c(None='','Double Quote'='"','Single Quote'="'"),'')
+            )),
+            column(9,
+              verbatimTextOutput('dim'),
+              verbatimTextOutput('structure'),
+              verbatimTextOutput('summary')            
+            )
+          )
+        ),
+        ############################################################################################################################
+        ############################################################################################################################
+        tabPanel("Data Process",fluidRow(
+          column(3,wellPanel(
+            p(HTML(paste(tags$b("Data Mapping:"),("Appropriate variables need to be mapped to these keys")))),
+            h6("ID, TIME, and DV are accepted by default"),
+            hr(),
+            uiOutput("ID"),uiOutput("TIME"),uiOutput("DV"),
+            br()
+          )),
+          column(3,wellPanel(
+            p(HTML(paste(tags$b("Data Converting:"),("Variables can be converted to categorical/continuous")))),
+            code("Caution: dataset will be modified"),
+            hr(),
+            uiOutput("CONVERTCON"),
+            uiOutput("CONVERTCAT"),
+            uiOutput("TRANSFORMCON")
+          )),
+          column(3,wellPanel(
+            p(HTML(paste(tags$b("Data Subsetting:"),("Observations can be filtered and variables can be removed")))),
+            code("Caution: dataset will be modified"),
+            hr(),
+            selectInput('subset_type',label="Filter by:",choices=c("NONE","COLUMN","ROW"),selected="NONE"),
+            conditionalPanel("input.subset_type=='ROW'", textInput("rows", "Rows","Enter filter condition (e.g., TIME<=24)...")),
+            conditionalPanel("input.subset_type=='ROW'", verbatimTextOutput("RLOGIC")),
+            #checkboxInput('nafilt','Remove variables with all missing values',value=TRUE),
+            conditionalPanel("input.subset_type=='ROW'", checkboxInput('nafilt','Remove variables with all missing values',value=TRUE)),
+            conditionalPanel("input.subset_type=='COLUMN'",uiOutput("COLUMNS"))
+          )),
+          column(3,wellPanel(
+            p(HTML(paste(tags$b("Data Sorting:"),("Order of observations can be re-ordered, based on selected variables")))),
+            code("Caution: dataset will be modified"),
+            hr(),
+            uiOutput("SORTS")
+          ))
+        )),
+        ############################################################################################################################
+        ############################################################################################################################
+        tabPanel("Data Explore",fluidRow(
+          column(3,
+            wellPanel(uiOutput("convars")),
+            wellPanel(uiOutput("catvars")),
+            wellPanel(selectInput("explore_type","Choose results format:",c("TABLE","GRAPH"),selected="GRAPH"),
+            conditionalPanel("input.explore_type=='TABLE'",selectInput('stat_type',"Statistic",c("N","MEAN","MEDIAN","PERCENT.CV","MIN","MAX"))))
+          ),
+          column(9,
+            conditionalPanel("input.explore_type=='GRAPH'",plotOutput('explot')),
+            conditionalPanel("input.explore_type=='TABLE'",dataTableOutput('extable'))
+          )
+        )),
+        ############################################################################################################################
+        ############################################################################################################################
+        tabPanel("Data Table",fluidRow(dataTableOutput('contents'))),
+        ############################################################################################################################
+        ############################################################################################################################
+        tabPanel("Data Plot",fluidRow(
+            column(3,
+              fluidRow(
+                column(7,wellPanel(
+                  selectInput('plot_type',"Plot Type:",c("SCATTERPLOT","HISTOGRAM","BARPLOT","BOXPLOT"),selected="SCATTERPLOT"),
+                  uiOutput('xvars'),
+                  radioButtons('xconvert',"Convert to:",c("Categorical","Continuous")),
+                  conditionalPanel("input.plot_type!='HISTOGRAM'",uiOutput('yvars')),
+                  conditionalPanel("input.plot_type!='HISTOGRAM'",
+                  radioButtons('yconvert',"Convert to:",c("Categorical","Continuous"),selected="Continuous"))
+                ),
+                  wellPanel(
+                    conditionalPanel("input.plot_type=='HISTOGRAM'", uiOutput('bins')),
+                    conditionalPanel("input.plot_type=='SCATTERPLOT'",radioButtons("jitter","Jitter Points",list("Yes"="jitter","No"="identity"),selected="identity",inline=TRUE)),
+                    conditionalPanel("input.plot_type=='BOXPLOT'",radioButtons("jitterb","Jitter Points",list("Yes"="jitter","No"="identity"),selected="identity",inline=TRUE)),
+                    selectInput("line_type","Add line:",c("NONE","MEAN","LINEAR REGRESSION","LOESS SMOOTHER","REFERENCE")),
+                    conditionalPanel("input.line_type=='REFERENCE'",textInput("xref","Vertical Lines:","Enter value(s) e.g. a,b,c")),
+                    conditionalPanel("input.line_type=='REFERENCE'",textInput("yref","Horizontal Lines:","Enter value(s) e.g. a,b,c")),                  
+                    conditionalPanel("input.line_type=='LINEAR REGRESSION'",verbatimTextOutput('r2')) 
+                  )             
+                ),    
+                column(5,wellPanel(
+                  selectInput('strata_type',"Stratification:",choices=c("NONE","PANEL","GRID"),selected="NONE"),
+                  conditionalPanel("input.strata_type=='PANEL'",uiOutput("stratas")),
+                  conditionalPanel("input.strata_type=='GRID'",uiOutput("rowstratas")),
+                  conditionalPanel("input.strata_type=='GRID'",uiOutput("colstratas")),
+                  #hr(),
+                  #p("Panel: strings together plots in different frames based in a single variable such as subject ID"),
+                  #p("Grid: lays out plots in a 2-dimensional (rows and columns) in a grid format"),
+                  conditionalPanel("input.strata_type!='NONE'",selectInput('scale_type',"Axis Scale:",c("FIXED","FREE_X","FREE_Y","FREE"),selected="fixed"))
+                  #conditionalPanel("input.strata_type!='NONE'",p("Axis scales in panels can either be fixed and dynamic in the x or y direction"))
+                ),
+                  wellPanel(
+                    selectInput('group_type',label="Grouping:",choices=c("NONE","COLOR","SHAPE"),selected="NONE"),
+                    conditionalPanel("input.group_type=='COLOR'",uiOutput("colors")),
+                    conditionalPanel("input.group_type=='SHAPE'",uiOutput("shapes"))
+                    #conditionalPanel("input.group_type=='SIZE'",uiOutput("sizes")),
+                    #hr(),
+                    #p("Map variable to group data by color, symbol, or size")
+                  )
+                )            
+              )  
+            ),
+            column(9,
+              fluidRow(column(12,
+                    column(4,offset=1,fluidRow(
+                      column(5,strong("Log Scale:")),
+                      column(3,checkboxInput("xlog","X axis",FALSE)),
+                      column(3,checkboxInput("ylog","Y axis",FALSE))
+                    )),
+                    column(4,fluidRow(
+                      column(5,strong("Reverse Scale:")),
+                      column(3,checkboxInput("xrev","X axis",FALSE)),
+                      column(3,checkboxInput("yrev","Y axis",FALSE))
+                    )),
+                    column(2,fluidRow(
+                      column(12,checkboxInput("flip","Switch axes",FALSE))
+                    ))              
+              )),
+              fluidRow(column(12,  
+              plotOutput('plot',click="plot_click",dblclick="plot_dblclick",hover="plot_hover",height="600px",
+                brush=brushOpts(id="plot_brush",resetOnNew=TRUE)),
+              p('Highlight section to select datapoint(s); Double-click to zoom in and out'),     
+              verbatimTextOutput('brush_info')
+              ))
+            )
+          )
+        ),
+        ############################################################################################################################
+        ############################################################################################################################
+        tabPanel("Data Evaluation",
+          fluidRow(
+            column(2, 
+              wellPanel(
+                #actionButton("run","Run",icon=icon("calculator")),
+                selectInput("output_type",label="Choose results format:",choices=c("TABLE","GRAPH"),selected="TABLE"),
+                conditionalPanel("input.output_type=='GRAPH'",checkboxInput("pk_number","Facet by Number of Timepoints",value=FALSE)),            
+                br(),
+                #p("Use dropdown to select timepoint(s) to include in sampling schedule"),
+                uiOutput('TIMEPTS'),
+                br(),
+                p("Specify criteria:"),
+                uiOutput('timeptslider'),uiOutput('cmaxslider'),uiOutput('aucslider'),
+                hr(),
+                checkboxInput("pk_outlier", "Evaluate individual values", value = FALSE),
+                conditionalPanel("input.pk_outlier==true", uiOutput('indcmaxslider')),
+                conditionalPanel("input.pk_outlier==true", uiOutput('indaucslider'))
+              ),
+              wellPanel(
+                p("Export dataset"),downloadButton('export', 'Download')
+              )
+            ),
+            column(10,  
+              p("Bias Peformance: mean percentage prediction error (MPPE); Accuracy Performance: mean absolute prediction error (MAPE), root mean square prediction error(RMSE)"),
+              conditionalPanel("input.output_type=='GRAPH'",p("Highlight section to select datapoint(s); Double-click to zoom in and out")),
+              dataTableOutput('pktable'),
+              plotOutput('pkplot',click="pkplot_click",dblclick="pkplot_dblclick",hover="pkplot_hover",height="600px",
+                brush=brushOpts(id="pkplot_brush",resetOnNew=TRUE)),
+              conditionalPanel("input.output_type=='Graph'",verbatimTextOutput('pkprint'))  
+            )
+          )
+        ),
+        tabPanel("Data TEST",fluidRow(verbatimTextOutput('test'),verbatimTextOutput('test2')))
+      )))        
+    )
+
+
+
+server <- (function(input, output, session) { 
+  inputdta <- reactive({inFile<-input$file; read.csv(inFile$datapath, header=input$header, sep=input$sep, quote=input$quote,strings=input$strings,na.strings=input$na)})
+  output$dim <- renderText({if(is.null(input$file)) return(NULL)
+                  c("File Name:", input$file$name, "(", "Observations:", dim(inputdta())[1], ";","Variables:", as.numeric(dim(inputdta())[2]),")")
+                })
+  
+  output$structure <- renderPrint({if(is.null(input$file)) return(NULL); str(inputdta())})
+  output$summary <- renderPrint({if(is.null(input$file)) return(NULL); summary(inputdta())})
+    
+  ############################################################################################################################
+  ############################################################################################################################
+    ### mapping variables
+  output$ID <-  renderUI({if(is.null(input$file)) return(NULL); selectInput("id","Subject",sort(names(inputdta())),selected="ID")}) 
+  output$TIME <-  renderUI({if(is.null(input$file)) return(NULL); selectInput("time","Time",sort(names(inputdta())),selected="TIME")})   
+  output$DV <-  renderUI({if(is.null(input$file)) return(NULL); selectInput("dv","Concentration",sort(names(inputdta())),selected="DV")}) 
+  output$CONVERTCON <- renderUI({if(is.null(input$file)) return(NULL)
+                              selectizeInput('convertcon',"Convert from Continuous to Categorical Variable:",multiple=T,
+                                          sort(names(inputdta()[sapply(inputdta(),is.numeric)])))
+                            })
+  output$CONVERTCAT <- renderUI({if(is.null(input$file)) return(NULL)
+                              selectizeInput('convertcat',"Convert from Categorical to Continuous Variable:",multiple=T,
+                                          sort(names(inputdta()[sapply(inputdta(),is.factor)])))
+                            })
+  
+  output$COLUMNS <- renderUI({if(is.null(input$file)) return(NULL)
+                              selectizeInput('columns','Columns',sort(names(dta_map())),multiple=TRUE,
+                                             options=list(placeholder='Select column(s) below in desired order to keep; use backspace to undo selection(s)')
+                                            )
+                              }) 
+  output$RLOGIC <-  renderText({paste("COMMON R LOGIC SYNTAX\n'<' Less Than; '>' Greater Than\n'<=' Less Than or Equal To; '>=' Greater Than or Equal To\n'==' Equal To; '!=' Not Equal To\n'%in%' Group Membership\n'is.na()' is NA; '!is.na()' is not NA\n '&' '|' '!' 'xor' 'any' 'all' Boolean operators")
+                                            })
+  output$SORTS <- renderUI({if(is.null(input$file)) return(NULL)
+                            selectizeInput('sorts','Columns',sort(names(dta_filt())),multiple=TRUE,
+                                             options=list(placeholder='Select sort column(s) below in desired order; use backspace to undo selection(s)')
+                                          )
+                            })
+    
+  dta_map <-  reactive({dta.map <- inputdta()
+                        if(input$nonmem=="TRUE") dta.map %<>% filter(AMT==0|is.na(as.numeric(AMT)))
+                        dta.map$VAR1 <- dta.map[,sprintf(input$id)] 
+                        dta.map$VAR2 <- dta.map[,sprintf(input$time)] 
+                        dta.map$VAR3 <- dta.map[,sprintf(input$dv)] 
+                        if(input$id=="ID") dta.map %<>% select(-VAR1) else dta.map %<>% rename(ID=VAR1)
+                        if(input$time=="TIME") dta.map %<>% select(-VAR2) else dta.map %<>% rename(TIME=VAR2)             
+                        if(input$dv=="DV") dta.map %<>% select(-VAR3) else dta.map %<>% rename(DV=VAR3)
+                        dta.map %<>% arrange(ID,TIME) %>% mutate(ID=as.integer(ID),TIME=as.numeric(TIME),DV=as.numeric(as.character(DV)))                    
+                        return(dta.map)
+                        })
+  dta_filtna <- reactive({if(input$nafilt) dta <- dta_map()[,!unlist(lapply(dta_map(), function(x) all(is.na(x))))]
+                          else dta <- dta_map()
+                          return(dta)})
+  dta_trans <- reactive({
+                 dta.trans <- dta_filtna()
+                 if(!is.null(input$convertcat)) dta.trans[,input$convertcat] <- as.numeric(as.matrix(dta.trans[,c(input$convertcat)]))
+                 if(!is.null(input$convertcon)) dta.trans %<>% mutate_each_(funs(factor),input$convertcon)
+                 return(dta.trans)
+  })
+  dta_filt <- reactive({dta.filt <- dta_trans()
+                        if(input$subset_type!="NONE") {
+                          if(!is.null(input$columns)) dta.filt %<>% select(one_of(input$columns))
+                          if(input$rows!="Enter filter condition (e.g., TIME<=24)...") dta.filt %<>% filter_(input$rows) 
+                        }    
+                        return(dta.filt)                    
+                        })
+  
+  dta_sort <- reactive({ dta.sort <- dta_filt()
+                         if(!is.null(input$sorts)) dta.sort %<>% arrange_(input$sorts)                  
+                         return(dta.sort)  
+                        })
+  dta <- reactive ({dta.factorize <- dta_sort()
+                    #dta.factorize <- data.frame(lapply(dta.factorize,factorize)) %>% filter(!is.na(DV))
+                    return(dta.factorize)
+                    })
+  
+  
+  ############################################################################################################################
+  ############################################################################################################################
+  output$convars <- renderUI({if(is.null(input$file)) return(NULL)
+                              selectizeInput('convar',"Continuous Variable:",multiple=T,
+                                          sort(names(dta()[sapply(dta(),is.numeric)])))
+                            })
+  output$catvars <- renderUI({if(is.null(input$file)) return(NULL)
+                              selectizeInput('catvar',"Categorical Variable:",multiple=T,
+                                          sort(names(dta()[sapply(dta(),is.factor)])))
+                            })
+  output$explot <- renderPlot({if(is.null(input$file)) return(NULL)
+                               if(is.null(input$catvar) & is.null(input$convar)) return(NULL)
+                               
+                               
+                               if(length(input$catvar)==1 & is.null(input$convar)) 
+                                 p <- ggplot(data=dta(),aes_string(x=input$catvar)) + geom_bar() + ylab("COUNT") 
+                                
+                               if(is.null(input$catvar) & length(input$convar)==1) 
+                                 p <- ggplot(data=dta(),aes_string(x=input$convar)) + geom_histogram() 
+                               
+                               if(length(input$catvar)+length(input$convar)!=1) 
+                                 p <- dta_explot() %>% ggpairs(diag=list(continuous="density",discrete="bar"),
+                                                               upper=list(continuous="cor",discrete="ratio",combo="box"),
+                                                               lower=list(continuous="points",discrete="facetbar",combo="facethist"))
+                               return(p)
+                               })
+  
+  output$extable <- renderDataTable({if(is.null(input$file)) return(NULL)
+                                     if(is.null(input$catvar) & is.null(input$convar)) return(NULL)
+                                     #if(is.null(input$catvar) & length(input$convar)==1) dta_extable()                                       
+                                     #if(length(input$catvar)+length(input$convar)!=1) dta_extable()
+                                     dta_extable()
+                                     })  
+  dta_explot <- reactive({ dta.ex <- dta() 
+                           dta.ex %<>% select(one_of(c(input$convar,input$catvar)))
+                           return(dta.ex)
+                          })
+  dta_extable <- reactive({#Categorical only
+                           if(!is.null(input$catvar) & is.null(input$convar)) {
+                              #if(length(input$catvar)==1) dta.ex <- dta() %>% select(one_of(input$catvar)) %>% 
+                              #                                                sapply(levels(dta()[,sprintf(input$catvar)]),
+                              #                                                       function(x) length(dta()[,sprintf(input$catvar)]==x))
+                              if(length(input$catvar)>=1) dta.ex <- dta() %>% select(one_of(input$catvar)) %>% 
+                                                                             summarise_each(funs(N=length(.))) %>%
+                                                                             mutate(STATISTIC="N") %>% select(one_of(c("STATISTIC",input$catvar)))
+                           }  
+                           #Continuous with or no levels
+                           if(is.null(input$catvar) & !is.null(input$convar)) {
+                              dta.ex <- dta() %>% select(one_of(input$convar)) %>% 
+                                                  summarise_each(funs(N=length(.),MEAN=round(mean(.),2),MEDIAN=median(.),
+                                                                 PERCENT.CV=round(pctcv.calc(.),2),MIN=min(.),MAX=max(.)))
+                              if(length(input$convar)==1) dta.ex %<>% gather_("STATISTIC",input$convar)
+                              if(length(input$convar)>1) dta.ex %<>% t %>% as.data.frame %>% add_rownames %>% 
+                                                                separate(rowname,into=c("VARIABLE","STATISTIC"),sep="_",extra="drop") %>% 
+                                                                spread(VARIABLE,V1) %>% 
+                                                                mutate(STATISTIC=ordered(STATISTIC,levels=c("N","MEAN","MEDIAN",
+                                                                                         "PERCENT.CV","MIN","MAX"))) %>%
+                                                                arrange(STATISTIC)
+                           }
+                          #Categorical + Continuous
+                           if(!is.null(input$catvar) & !is.null(input$convar)) {
+                             dta.ex <- dta() %>% group_by_(.dots=input$catvar) %>% select(one_of(input$convar))                                                 
+                             if(input$stat_type=="N") dta.ex %<>% summarise_each(funs(length))
+                             if(input$stat_type=="MEAN") dta.ex %<>% summarise_each(funs(round(mean(.),2)))
+                             if(input$stat_type=="MEDIAN") dta.ex %<>% summarise_each(funs(median))
+                             if(input$stat_type=="PERCENT CV") dta.ex %<>% summarise_each(funs(round(pctcv.calc(.),2)))
+                             if(input$stat_type=="MIN") dta.ex %<>% summarise_each(funs(min))
+                             if(input$stat_type=="MAX") dta.ex %<>% summarise_each(funs(max))
+                             dta.ex %<>% mutate(STATISTIC=as.character(input$stat_type)) %>% 
+                                         select(one_of(c("STATISTIC",input$catvar,input$convar)))
+                           } 
+                           #dta.ex %<>% summarise_each(funs(round,digits=2))
+                           return(dta.ex)
+                          })
+  ############################################################################################################################
+  ############################################################################################################################
+  output$contents <-  renderDataTable({if(is.null(input$file)) return(NULL); dta()})
+  ############################################################################################################################
+  ############################################################################################################################
+  output$xvars <- renderUI({if(is.null(input$file)) return(NULL)
+                              selectInput('xvar',"X Variable:",selected="TIME",
+                                          sort(c(names(dta()[sapply(dta(),is.numeric)]),names(dta()[sapply(dta(),is.factor)]))))
+                            })
+  output$yvars <- renderUI({if(is.null(input$file)) return(NULL)
+                              selectInput('yvar',"Y Variable:",selected="DV",
+                                          sort(c(names(dta()[sapply(dta(),is.numeric)]),names(dta()[sapply(dta(),is.factor)]))))
+                            })
+              
+  output$stratas <- renderUI({if(is.null(input$file)) return(NULL)
+                      selectInput("strata","Stratify by:",selected="NONE",
+                                  sort(c("NONE",names(dta()[sapply(dta(),is.numeric)]),names(dta()[sapply(dta(),is.factor)]))))
+                    })  
+  output$rowstratas <-  renderUI({if(is.null(input$file)) return(NULL) 
+                          selectInput("rowstrata","Stratify by Row:",selected="NONE",
+                                      sort(c(names(dta_strat()[sapply(dta_strat(),is.factor)]))))
+                        })  
+  output$colstratas <-  renderUI({if(is.null(input$file)) return(NULL) 
+                          selectInput("colstrata","Stratify by Column:",selected="NONE",
+                                      sort(c(names(dta_strat()[sapply(dta_strat(),is.factor)]))))
+                        })
+  output$colors <-  renderUI({if(is.null(input$file)) return(NULL) 
+                      selectInput("color","Group by Color:",selected="NONE",
+                        sort(c(names(dta_strat()[sapply(dta_strat(),is.numeric)]),names(dta_strat()[sapply(dta_strat(),is.factor)]))))
+                    })  
+  output$shapes <-  renderUI({if(is.null(input$file)) return(NULL) 
+                      selectInput("shape","Group by Shape:",sort(c(names(dta_strat()[sapply(dta_strat(),is.factor)]))))
+                    })  
+  output$bins <-  renderUI({if(is.null(input$file)) return(NULL) 
+                    sliderInput('bin',"Binwidth:",min=1,max=round(max(dta_plot()$X)/6),value=round(max(dta_plot()$X)/30))
+                  })
+  #output$sizes <- renderUI({if(is.null(input$file)) return(NULL) 
+  #                  selectInput("size","Group by Size:",choices=c("NONE",names(dta())),selected="NONE")
+  #                })  
+  
+  
+  
+  dta_strat <- reactive({
+    strat.dta <- dta() %>% mutate(NONE=0)
+    #strat.dta <- data.frame(lapply(strat.dta,factorize)) %>% filter(!is.na(DV))
+    return(strat.dta)
+    })
+  dta_plot <- reactive({
+    plot.dta <- dta_strat()
+    if(input$xconvert=="Categorical") plot.dta$X <- factor(plot.dta[,sprintf(input$xvar)])
+    if(input$xconvert=="Continuous") plot.dta$X <- as.numeric(as.character(plot.dta[,sprintf(input$xvar)]))
+    if(input$yconvert=="Categorical") plot.dta$Y <- factor(plot.dta[,sprintf(input$yvar)])
+    if(input$yconvert=="Continuous") plot.dta$Y <- as.numeric(as.character(plot.dta[,sprintf(input$yvar)]))
+    
+    if(input$strata_type=="PANEL") plot.dta$STRATVAR <- plot.dta[,sprintf(input$strata)]  else plot.dta$STRATVAR <- 0
+    if(input$group_type=="COLOR")  plot.dta$COLORGRP <- plot.dta[,sprintf(input$color)] else plot.dta$COLORGRP <- 0              
+    if(input$group_type=="SHAPE")  plot.dta$SHAPEGRP <- plot.dta[,sprintf(input$shape)] else plot.dta$SHAPEGRP <- factor(0)               
+    #if(input$group_type=="SIZE")  plot.dta$SIZEGRP <- plot.dta[,sprintf(input$size)] else plot.dta$SIZEGRP <- rep(0,nrow(plot.dta))               
+      
+    #if(length(levels(as.factor(as.character(plot.dta$COLORGRP))))<=8) plot.dta$COLORGRP<- as.factor(plot.dta$COLORGRP)
+    #if(length(levels(as.factor(as.character(plot.dta$SHAPEGRP))))<=6) plot.dta$SHAPEGRP<- as.factor(plot.dta$SHAPEGRP)
+    #if(length(levels(as.factor(as.character(plot.dta$SIZEGRP))))<=6) plot.dta$SIZEGRP<- as.factor(plot.dta$SIZEGRP)
+    return(plot.dta)  
+  })
+  
+  dta_outlier <- reactive({
+    boxplot.dta <- dta_plot()
+    boxplot.out <- boxplot.dta %>% group_by(X) %>% mutate(Q1=quantile(Y,1/4),Q3=quantile(Y,3/4),IQR=Q3-Q1,
+                                                          upper.limit=Q3+1.5*IQR,lower.limit=Q1-1.5*IQR) %>%
+                                                   filter(Y>upper.limit|Y<lower.limit) 
+    #boxplot.out <- data.frame(lapply(boxplot.out,factorize)) %>% filter(!is.na(DV)) %>% mutate(TIME=is.numeric(is.character(TIME)))
+    return(boxplot.out)
+  })
+  
+  observe({
+    if(input$plot_type=="SCATTERPLOT") updateRadioButtons(session,"xconvert",selected="Continuous")
+    if(input$plot_type=="HISTOGRAM") updateRadioButtons(session,"xconvert",selected="Continuous")
+    if(input$plot_type=="BARPLOT") updateRadioButtons(session,"xconvert",selected="Categorical")
+    if(input$plot_type=="BOXPLOT") updateRadioButtons(session,"xconvert",selected="Categorical")
+    
+    if(input$plot_type=="SCATTERPLOT") updateSelectInput(session,"line_type",choices=c("NONE","MEAN","LINEAR REGRESSION","LOESS SMOOTHER","REFERENCE"))
+    if(input$plot_type=="HISTOGRAM") updateSelectInput(session,"line_type",choices=c("NONE","DENSITY","REFERENCE"))
+    if(input$plot_type=="BARPLOT") updateSelectInput(session,"line_type",choices=c("NONE","REFERENCE"))
+    if(input$plot_type=="BOXPLOT") updateSelectInput(session,"line_type",choices=c("NONE","MEAN","REFERENCE"))
+  })
+  
+  output$r2 <- renderText({
+    linear.mod <- lm(data=dta_plot(),Y~X)
+    r2 <- ifelse(summary(linear.mod)$r.squared<0.01,"r-squared < 0.01",paste("r-squared =",round(summary(linear.mod)$r.squared,digits=2)))
+    return(r2)
+  })
+  
+  output$plot <- renderPlot({if(is.null(input$file)) return(NULL)
+    ## Scatterplot options    
+    if(input$plot_type=="SCATTERPLOT") p <- ggplot(data=dta_plot(),aes(x=X,y=Y,color=COLORGRP,fill=COLORGRP,shape=SHAPEGRP)) + 
+                                            xlab(input$xvar) + ylab(input$yvar) + coord_cartesian(xlim=ranges$x,ylim=ranges$y) 
+    #if(input$plot_type=="SCATTERPLOT" & dta_plot()$COLORGRP=="NONE") p <- p + geom_point(position=input$jitter,size=rel(3),color="black")
+    if(input$plot_type=="SCATTERPLOT" & length(levels(dta_plot()$COLORGRP))>=2) p <- p + geom_point(position=input$jitter,size=rel(3)) 
+    if(input$plot_type=="SCATTERPLOT" & length(levels(dta_plot()$COLORGRP))<2) p <- p + geom_point(position=input$jitter,size=rel(3),color="black")
+    if(input$plot_type=="SCATTERPLOT" & input$group_type=="NONE") p <- p + geom_point(position=input$jitter,size=rel(3),color="black")
+    
+    
+    if(input$plot_type=="SCATTERPLOT" & input$line_type=="MEAN" & length(levels(dta_plot()$COLORGRP))>=2) {
+      p <- p + stat_summary(geom="line",alpha=0.6,size=rel(2),fun.y=mean) + 
+               stat_summary(geom="ribbon",aes(color=NULL),alpha=0.1,
+                            fun.ymin=function(x) quantile(x, 0.05),fun.ymax=function(x) quantile(x, 0.95))
+    }
+    if(input$plot_type=="SCATTERPLOT" & input$line_type=="MEAN" & length(levels(dta_plot()$COLORGRP))<2) { 
+      p <- p + stat_summary(geom="line",color="black",alpha=0.6,size=rel(2),fun.y=mean) +
+               stat_summary(geom="ribbon",aes(color=NULL),fill="black",alpha=0.1,
+                            fun.ymin=function(x) quantile(x, 0.05),fun.ymax=function(x) quantile(x, 0.95))                                  
+    }
+    ##  Histogram options
+    if(input$plot_type=="HISTOGRAM")
+      p <- ggplot(data=dta_plot(),aes(x=X,color=COLORGRP,fill=COLORGRP)) + 
+                  geom_histogram(stat="bin",binwidth=input$bin,position="dodge") + 
+                  xlab(input$xvar) + ylab("COUNT") + coord_cartesian(xlim=ranges$x) 
+    if(input$plot_type=="HISTOGRAM" & length(levels(dta_plot()$COLORGRP))<=1) 
+      p <- p + geom_histogram(binwidth=input$bin,color="black",fill="black")      
+    if(input$plot_type=="HISTOGRAM" & input$line_type=="DENSITY") 
+      p <- ggplot(data=dta_plot(),aes(x=X,fill=COLORGRP)) + geom_density(alpha=0.3,colour=NA) + 
+                  geom_line(stat="density") + xlab(input$xvar) + ylab("DENSITY") + coord_cartesian(xlim=ranges$x) 
+    if(input$plot_type=="HISTOGRAM" & input$line_type=="DENSITY" & length(levels(dta_plot()$COLORGRP))<=1) 
+      p <- p + geom_density(fill="black",alpha=0.3,colour=NA) + geom_line(stat="density")    
+      
+    ## Barplot options
+    if(input$plot_type=="BARPLOT")
+       p <- ggplot(data=dta_plot(),aes(x=X,y=Y,color=COLORGRP,fill=COLORGRP)) + geom_bar(stat="identity") + 
+                   xlab(input$xvar) + ylab(input$yvar) + coord_cartesian(xlim=ranges$x,ylim=ranges$y) 
+    if(input$plot_type=="BARPLOT" & length(levels(dta_plot()$COLORGRP))<=1) 
+       p <- p + geom_bar(stat="identity",color="black",fill="black")
+    
+    ## Boxplot options
+    if(input$plot_type=="BOXPLOT") 
+      p <- ggplot(data=dta_plot(),aes(x=X,y=Y,color=COLORGRP)) + 
+                  xlab(input$xvar) + ylab(input$yvar) + coord_cartesian(xlim=ranges$x,ylim=ranges$y) 
+    
+    if(input$plot_type=="BOXPLOT" & is.null(input$color) & input$jitterb=="identity") 
+      p <- p + geom_boxplot(color="black")
+    if(input$plot_type=="BOXPLOT" & is.null(input$color) & input$jitterb=="jitter") 
+      p <- p + geom_boxplot(color="black",outlier.shape=NA) + geom_point(color="black",position=input$jitterb,alpha=0.5)
+    
+    if(input$plot_type=="BOXPLOT" & !is.null(input$color)) {
+      if(length(levels(dta_plot()$COLORGRP))>=2 & input$jitterb=="jitter") 
+        p <- p + geom_boxplot(outlier.shape=NA) + geom_point(position=input$jitterb,alpha=0.5)
+      if(length(levels(dta_plot()$COLORGRP))<2 & input$jitterb=="jitter") 
+        p <- p + geom_boxplot(color="black") + geom_point(color="black",position=input$jitterb,alpha=0.5)
+      if(length(levels(dta_plot()$COLORGRP))<2 & input$jitterb=="identity") 
+        p <- p + geom_boxplot(color="black",outlier.shape=NA) + geom_point(data=dta_outlier(),position=input$jitterb,color="black",alpha=0.5)     
+      if(length(levels(dta_plot()$COLORGRP))>=2 & input$jitterb=="identity" & input$xvar==input$color) 
+        p <- p + geom_boxplot(outlier.shape=NA) + geom_point(data=dta_outlier(),position=input$jitterb,aes(x=X,y=Y,color=COLORGRP),alpha=0.5)     
+      if(length(levels(dta_plot()$COLORGRP))>=2 & input$jitterb=="identity" & input$xvar!=input$color) 
+        p <- p + geom_boxplot()
+    }
+    
+    
+    if(input$plot_type=="BOXPLOT" & input$line_type=="MEAN") { 
+      p <- p + stat_summary(aes(group=1),geom="line",color="black",alpha=0.4,size=rel(2),fun.y=mean) +
+               stat_summary(aes(group=1),geom="point",shape="*",color="black",alpha=0.8,size=rel(5),fun.y=mean)    
+    }
+        
+  
+          
+#      if(input$xvar!=input$color) p <- p + geom_boxplot(outlier.shape=NA) + geom_point(position=input$jitter,alpha=0.5)
+#      if(input$xvar==input$color) p <- p + geom_boxplot(outlier.shape=NA) + 
+#                                           geom_point(data=dta_outlier(),position=input$jitter,aes(x=X,y=Y,color=COLORGRP),alpha=0.5)     
+##      if(length(levels(dta_plot()$COLORGRP))<2) 
+#         p <- p + geom_boxplot(color="black",outlier.shape=NA) + geom_point(color="black",position=input$jitter,alpha=0.5)   
+#      if(length(levels(dta_plot()$COLORGRP))>=2) 
+#         p <- p + geom_boxplot() + geom_point(position=input$jitter,alpha=0.5)   
+
+  
+  
+    if(input$line_type=="LINEAR REGRESSION" & length(levels(dta_plot()$COLORGRP))>=2) {
+      p <- p + stat_smooth(method="lm",alpha=0.2,size=rel(2)) 
+    }
+    if(input$line_type=="LINEAR REGRESSION" & length(levels(dta_plot()$COLORGRP))<2) {
+      p <- p + stat_smooth(color="black",fill="black",method="lm",alpha=0.2,size=rel(2))
+    }
+    if(input$line_type=="LOESS SMOOTHER" & length(levels(dta_plot()$COLORGRP))>=2) {
+      p <- p + stat_smooth(method="loess",alpha=0.2,size=rel(2))
+    }
+    if(input$line_type=="LOESS SMOOTHER" & length(levels(dta_plot()$COLORGRP))<2) {
+      p <- p + stat_smooth(color="black",fill="black",method="loess",alpha=0.2,size=rel(2))
+    }
+    if(input$line_type=="REFERENCE" & input$xref!="Enter value(s) e.g. a,b,c") {
+      p <- p + geom_vline(x=as.numeric(unlist(str_split(input$xref,","))),size=rel(2),linetype="dashed",color="darkblue",alpha=0.6)
+      if(length(unlist(str_split(input$xref,",")))>1) {
+        p <- p + annotate("rect",xmin=min(as.numeric(unlist(str_split(input$xref,",")))),
+                          xmax=max(as.numeric(unlist(str_split(input$xref,",")))),
+                          ymin=min(dta_plot()[,input$yvar]),ymax=max(dta_plot()[,input$yvar]),fill="blue",alpha=0.1)
+      }
+    }
+    if(input$line_type=="REFERENCE" & input$yref!="Enter value(s) e.g. a,b,c") {
+      p <- p + geom_hline(y=as.numeric(unlist(str_split(input$yref,","))),size=rel(2),linetype="dashed",color="darkred",alpha=0.6)
+      if(length(unlist(str_split(input$yref,",")))>1) {
+        p <- p + annotate("rect",ymin=min(as.numeric(unlist(str_split(input$yref,",")))),
+                          ymax=max(as.numeric(unlist(str_split(input$yref,",")))),
+                          xmin=min(dta_plot()[,input$xvar]),xmax=max(dta_plot()[,input$xvar]),fill="red",alpha=0.1)
+      }
+    }
+    
+    if(input$xlog) p <- p + scale_x_log10(); if(input$ylog) p <- p + scale_y_log10()
+    if(input$xrev) p <- p + scale_x_reverse(); if(input$yrev) p <- p + scale_y_reverse()
+    if(input$flip) p <- p + coord_flip()
+
+    facets <- paste(input$rowstrata,'~',input$colstrata)  
+    if(input$strata_type=="PANEL") {p <- p + facet_wrap(~STRATVAR,scales=tolower(input$scale_type))}
+    if(input$strata_type=="GRID") {p <- p + facet_grid(facets,scales=tolower(input$scale_type))}
+
+    #if(!is.null(input$color)) p <- p + aes_string(color=input$color)
+    #if(!is.null(input$shape)) p <- p + aes_string(shape=input$shape)
+    #if(!is.null(input$size)) p <- p + aes_string(size=input$size)
+    #if(!is.null(input$color)) p <- p + geom_point(aes(color=COLORGRP))
+    #if(!is.null(input$shape)) p <- p + geom_point(aes(shape=factor(SHAPEGRP)))
+    #if(!is.null(input$size)) p <- p + geom_point(aes(size=SIZEGRP))
+    #if (!is.null(input$plot_click)) p <- p + geom_point(data=clickid(),aes(x=TIME,y=DV),size=rel(5),col="red")
+    return(p)
+  })
+    
+  
+  clickid <-  reactive({
+                click.id <- nearPoints(dta(),input$plot_click,maxpoints=1)
+                dta() %>% filter(ID==click.id$ID)
+              })
+   
+  output$brush_info <- renderPrint({if(is.null(input$file)) return(NULL)
+    cat("Selected datapoints:\n")
+    dta.select <- brushedPoints(dta_plot(), input$plot_brush)
+    dta.select %<>% select(-NONE,-STRATVAR,-COLORGRP,-SHAPEGRP) %>% filter(!is.na(DV))
+    return(dta.select)
+  })
+    
+  ranges <- reactiveValues(x = NULL, y = NULL)
+  observeEvent(input$plot_dblclick, {
+    brush <- input$plot_brush
+    if (!is.null(brush)) {
+      ranges$x <- c(brush$xmin, brush$xmax)
+      ranges$y <- c(brush$ymin, brush$ymax)
+    } else {
+      ranges$x <- NULL
+      ranges$y <- NULL
+    }
+  })
+
+  ############################################################################################################################
+  ############################################################################################################################
+  output$timeptslider <-  renderUI({if(is.null(input$file)) return(NULL)
+                            sliderInput("timeptrange","Number of timepoints", 
+                            min=3, max=length(unique(dta()$TIME)), step=1, round=T,
+                            value=c(3,length(unique(dta()$TIME))-1))
+                          })
+  
+  output$cmaxslider <-  renderUI({if(is.null(input$file)) return(NULL)
+                          sliderInput("cmaxrange","Mean Cmax Percent Error Range", round=T, value=min(pk()$MPPE_Cmax),
+                                      min=floor(min(pk()$MPPE_Cmax)), max=ceiling(max(pk()$MPPE_Cmax)))
+                        })
+  output$aucslider <- renderUI({if(is.null(input$file)) return(NULL)
+                        sliderInput("aucrange","Mean AUC Percent Error Range", round=T,
+                                    min=floor(min(pk()$MPPE_AUC)), max=ceiling(max(pk()$MPPE_AUC)), 
+                                    value=c(min(pk()$MPPE_AUC),max(pk()$MPPE_AUC)))
+                      })
+
+  output$indcmaxslider <- renderUI({if(is.null(input$file)) return(NULL)
+                            sliderInput("indcmaxrange","Cmax Percent Error Range", round=T, value=min(pk()$MinPPE_Cmax),
+                                        min=floor(min(pk()$MinPPE_Cmax)), max=ceiling(max(pk()$MaxPPE_Cmax)))
+                            })
+  output$indaucslider <-  renderUI({if(is.null(input$file)) return(NULL)
+                            sliderInput("indaucrange","AUC Percent Error Range", round=T,
+                                        min=floor(min(pk()$MinPPE_AUC)), max=ceiling(max(pk()$MaxPPE_AUC)), 
+                                        value=c(min(pk()$MinPPE_AUC),max(pk()$MaxPPE_AUC)))
+                          })
+  output$TIMEPTS <- renderUI({if(is.null(input$file)) return(NULL)
+                      selectizeInput("timepts","Select Timepoint(s)",sort(unique(dta()$TIME)),multiple=T)        
+                    })
+  
+  
+  pos <-  reactive({
+            id.list<-unique(dta()$ID); time.list<-unique(dta()$TIME)
+            timept.min <- 3; timept.max <- length(time.list)-1
+            time.pos <-lapply(timept.min:timept.max, function(x) combinations(length(time.list),x))
+            return(time.pos)
+          })    
+  combo <-  reactive({
+              id.list<-unique(dta()$ID); time.list<-unique(dta()$TIME)
+              timept.min <- 3; timept.max <- length(time.list)-1
+              all.combos <- lapply(timept.min:timept.max, function(x) combinations(length(time.list),x,time.list)) %>%
+                            llply(function(x) {scenario <- c(data.frame(x),sep=",");do.call(paste,scenario)}) %>% unlist() %>% 
+                            data.frame(combo=paste("c",1:length(.),sep=""),total=sapply(str_split(.,","),length),timept=.) 
+              return(all.combos)
+            }) 
+  
+  
+  
+  
+  ### NCA for every combination
+  pk <-  reactive({if(is.null(input$file)) return(NULL)
+                  id.list<-unique(dta()$ID); time.list<-unique(dta()$TIME)
+                  timept.min <- 3; timept.max <- length(time.list)-1         
+          
+                  PK.full <- dta() %>% group_by(ID) %>% summarise(CMAX=max(DV),TMAX=tmax.calc(TIME,DV),AUC=auc.calc(TIME,DV))
+                  full <- lapply(id.list, function(x) {dta()[which(dta()$ID==(x)),]})
+                  
+                  ###AUC for each combination
+                  AUC_error <-  withProgress(message = 'Calculating AUC', value=0, {
+                                  unlist(lapply(1:(timept.max-timept.min+1), function(timept,...){
+                                    unlist(lapply(1:nrow(pos()[[timept]]), function(scenario,...){
+                                      incProgress(1/nrow(combo()), detail=paste(timept+timept.min-1,"timepoints: #",scenario))
+                                      c(stat.func(as.vector(unlist(lapply(1:length(id.list), function(id){
+                                          (auc.calc(full[[id]]$TIME[c(pos()[[timept]][scenario,])],
+                                                    full[[id]]$DV[c(pos()[[timept]][scenario,])])- 
+                                                    PK.full$AUC[id])/PK.full$AUC[id]
+                                        })))),
+                                        mean(as.vector(unlist(lapply(1:length(id.list), function(id){
+                                          abs(auc.calc(full[[id]]$TIME[c(pos()[[timept]][scenario,])],
+                                                       full[[id]]$DV[c(pos()[[timept]][scenario,])])- 
+                                                       PK.full$AUC[id])
+                                        })))),
+                                        sqrt(mean(as.vector(unlist(lapply(1:length(id.list), function(id){
+                                          (auc.calc(full[[id]]$TIME[c(pos()[[timept]][scenario,])],
+                                                    full[[id]]$DV[c(pos()[[timept]][scenario,])])- 
+                                                    PK.full$AUC[id])**2
+                                        })))))
+                                      )  
+                                    }))
+                                  }))  
+                                }) 
+                  ###Cmax for each combination
+                  Cmax_error <- withProgress(message = 'Calculating Cmax', value=0, {
+                                  unlist(lapply(1:(timept.max-timept.min+1), function(timept,...){
+                                    unlist(lapply(1:nrow(pos()[[timept]]), function(scenario,...){
+                                      incProgress(1/nrow(combo()), detail=paste(timept+timept.min-1,"timepoints: #",scenario))
+                                      c(stat.func(as.vector(unlist(lapply(1:length(id.list), function(id){
+                                          (max(full[[id]]$DV[c(pos()[[timept]][scenario,])])-PK.full$CMAX[id])/PK.full$CMAX[id]
+                                        })))),
+                                        mean(as.vector(unlist(lapply(1:length(id.list), function(id){
+                                          abs(max(full[[id]]$DV[c(pos()[[timept]][scenario,])])-PK.full$CMAX[id])
+                                        })))),
+                                        sqrt(mean(as.vector(unlist(lapply(1:length(id.list), function(id){
+                                          (max(full[[id]]$DV[c(pos()[[timept]][scenario,])])-PK.full$CMAX[id])**2
+                                        })))))
+                                      )  
+                                    }))
+                                  }))  
+                                })
+
+                  AUCerror<-data.frame(matrix(round(as.vector(AUC_error)*100,2), ncol=5, byrow=T)) 
+                  Cmaxerror<-data.frame(matrix(round(as.vector(Cmax_error)*100,2), ncol=5, byrow=T)) 
+                  all.results <- bind_cols(combo(),Cmaxerror,AUCerror)
+                  names(all.results) <- c("Combination","Number","Timepoints",
+                                           "MinPPE_Cmax","MPPE_Cmax","MaxPPE_Cmax","MAPE_Cmax","RMSE_Cmax",
+                                           "MinPPE_AUC","MPPE_AUC","MaxPPE_AUC","MAPE_AUC","RMSE_AUC")
+                  return(all.results)          
+                  
+                })
+  
+  pk_filter <-  reactive({if(is.null(input$file)) return(NULL)
+                          if(!is.null(input$timepts)) {
+                            combomtrx <- sapply(1:nrow(combo()),function(x) as.vector(str_split(combo()$timept[x],",")))
+                            selection <- data.frame(apply(sapply(1:length(input$timepts), function(x) sapply(1:length(combomtrx), function(y) input$timepts[x] %in% combomtrx[[y]])),1,all))
+                            names(selection) <- "selection"
+                            results <- bind_cols(pk(),selection) %>% filter(selection==TRUE)
+                          } else {results <- pk()}
+
+                          results %<>%  filter(Number>=unlist(input$timeptrange)[1] & 
+                                               Number<=unlist(input$timeptrange)[2]) %>%
+                                        filter(MPPE_Cmax>=unlist(input$cmaxrange)[1]) %>%
+                                        filter(MPPE_AUC>=unlist(input$aucrange)[1] & 
+                                               MPPE_AUC<=unlist(input$aucrange)[2]) 
+
+                          if(input$pk_outlier) results %<>% filter(MinPPE_Cmax>=unlist(input$indcmaxrange)[1]) %>%
+                                                            filter(MinPPE_AUC>=unlist(input$indaucrange)[1] & 
+                                                                   MaxPPE_AUC<=unlist(input$indaucrange)[2])                         
+                          
+                          
+                          return(results)
+                          
+                })
+  
+  
+  ## Display filtered results
+  output$pktable <- renderDataTable({if(is.null(input$file)) return(NULL); if(input$output_type=="Graph") return(NULL)
+                      results <- pk_filter() %>%  select(Combination,Number,Timepoints,MPPE_Cmax,MPPE_AUC,MAPE_Cmax,MAPE_AUC,RMSE_Cmax,RMSE_AUC)
+                      names(results) <-  c("Combination","Number of Timepoints","Selected Timepoints",
+                                           "Mean % Cmax","Mean % AUC","MAPE Cmax","MAPE AUC","RMSE Cmax","RMSE AUC")
+                      return(results)
+                    })
+  
+  ### Export functions
+  output$export <-  downloadHandler(
+                      filename = function() {'timepoints.csv'},
+                      content = function(file) {write.csv(pk_filter(), file, row.names=F)}
+                    )
+  
+  output$pkplot <- renderPlot({if(is.null(input$file)) return(NULL);if(input$output_type=="Table") return(NULL)
+    p <- ggplot(data=pk_filter(),aes(x=MPPE_AUC,y=MPPE_Cmax)) + scale_x_reverse() + scale_y_reverse() + 
+          xlab("Mean AUC (% Prediction Error)") + ylab("Mean Cmax (% Prediction Error)") + slide_theme()
+    p <- p + scale_color_continuous(name="Total Error",low="black",high="red") + scale_shape_discrete(name="Number of Timepoints")
+    p <- p + coord_cartesian(xlim = pkranges$x, ylim = pkranges$y)
+    if(input$pk_number==FALSE) p <- p + geom_point(aes(color=abs(MPPE_AUC)+abs(MPPE_Cmax),shape=factor(Number)), size=rel(5))
+    if(input$pk_number) p <- p + geom_point(aes(shape=NULL,color=abs(MPPE_AUC)+abs(MPPE_Cmax)),size=rel(5)) + facet_wrap(~Number)
+    return(p)
+  })
+                           
+  output$pkprint <- renderPrint({if(is.null(input$file)) return(NULL);if(input$output_type=="Table") return(NULL); 
+                      if(is.null(pkranges)) return(NULL)
+                      else {cat("Selected Scenarios:\n")
+                            brushedPoints(pk_filter() %>% select(Combination,Number,Timepoints,MPPE_Cmax,MPPE_AUC,
+                                                                 MAPE_Cmax,MAPE_AUC,RMSE_Cmax,RMSE_AUC) %>% data.frame(), 
+                                          input$pkplot_brush)
+                      }      
+                    })
+  
+  
+  pkranges <- reactiveValues(x = NULL, y = NULL)
+  observeEvent(input$pkplot_dblclick, {
+    brush <- input$pkplot_brush
+    if (!is.null(brush)) {
+      pkranges$x <- c(brush$xmin, brush$xmax)
+      pkranges$y <- c(brush$ymin, brush$ymax)
+    } else {
+      pkranges$x <- NULL
+      pkranges$y <- NULL
+    }
+  })
+
+ output$test <- renderPrint({levels(test()$VAR)})
+ output$test2 <- renderPrint({(input$catvar)})
+})
+
+shinyApp(ui = ui, server = server)
