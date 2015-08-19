@@ -147,13 +147,12 @@ ui <- fluidPage(
                 )
             )
           )),
-          column(3,wellPanel(
-            p(HTML(paste(tags$b("Data Converting:"),("Variables can be converted to categorical/continuous")))),
-            code("Caution: dataset will be modified"),
-            hr(),
-            uiOutput("CONVERTCON"),
-            uiOutput("CONVERTCAT"), 
-            uiOutput("TRANSFORMCON")
+          column(4,wellPanel(
+            strong(textOutput('TRANS')),bsTooltip('TRANS',"Variables can be converted to categorical/continuous or transformed to form a new variable"),
+            code("Caution: dataset will be modified"),hr(),uiOutput("CONVERTCON"),uiOutput("CONVERTCAT"), 
+            selectInput('transform',"Transformation",c("NONE","ABS(X)","EXP(X)","LN(X)","LOG10(X)","SQRT(X)"),"NONE"),
+            conditionalPanel("input.transform!='NONE'",
+              fluidRow(column(6,uiOutput('TRANSFORM')),column(6,textInput('newvar',"New Variable"))))
           )),
           column(3,wellPanel(
             p(HTML(paste(tags$b("Data Subsetting:"),("Observations can be filtered and variables can be removed")))),
