@@ -25,12 +25,9 @@ lci95.calc <- function(x) round(mean(x,na.rm=T) - 1.96*se.calc(x),digits=2)
 ci95.calc <- function(x) paste(lci95.calc(x),uci95.calc(x),sep="~")
 
 server <- (function(input, output, session) { 
-  inputdta <- reactive({inFile<-input$file; 
-                        
-                        #if(str_detect(inFile$name,".xlsx")) dta <- read_excel(inFile$datapath)
+  inputdta <- reactive({inFile<-input$file;           
                         if(input$nonmem) dta <- read.nonmem(inFile$datapath) else
-                        dta <- read.csv(inFile$datapath, header=input$header, sep=input$sep, quote=input$quote,strings=input$strings,na.strings=input$na)
-                        
+                        dta <- read.csv(inFile$datapath, header=input$header, sep=input$sep,quote=input$quote,strings=input$strings,na.strings=input$na)
                         return(dta)})
   output$dim <- renderText({if(is.null(input$file)) return(NULL)
                   c("File Name:", input$file$name, "(", "Observations:", dim(inputdta())[1], ";","Variables:", as.numeric(dim(inputdta())[2]),")")
@@ -46,7 +43,8 @@ server <- (function(input, output, session) {
   output$TRANS <- renderText("Data Transformation:")
   output$SUB <- renderText("Data Subsetting:")
   output$SORT <- renderText("Data Sorting:")
-
+  
+  
   output$ID <-  renderUI({if(is.null(input$file)) return(NULL)
                           tipify(selectInput("id","Subject",sort(names(inputdta())),selected="ID"),
                                  "ID is default variable name",placement="right",options=list(container="body"))
@@ -77,20 +75,21 @@ server <- (function(input, output, session) {
   
   output$CONVERTCON <- renderUI({if(is.null(input$file)) return(NULL)
                               tipify(selectizeInput('convertcon',"Convert from Continuous to Categorical Variable:",multiple=T,
-                                          sort(names(inputdta()[sapply(dta_map(),is.numeric)]))),
+                                          sort(names(dta_map()[sapply(dta_map(),is.numeric)]))),
                                      "Select one or more continuous variable(s)",placement="right",options=list(container="body"))
                             })
   output$CONVERTCAT <- renderUI({if(is.null(input$file)) return(NULL)
                               tipify(selectizeInput('convertcat',"Convert from Categorical to Continuous Variable:",multiple=T,
-                                          sort(names(inputdta()[sapply(dta_map(),is.factor)]))),
+                                          sort(names(dta_map()[sapply(dta_map(),is.factor)]))),
                                      "Select one or more categorical variable(s)",placement="right",options=list(container="body"))
                             })
   output$TRANSFORM <- renderUI({if(is.null(input$file)) return(NULL)
-                                tipify(selectInput('transvar',"Variable:",sort(names(inputdta()[sapply(dta_map(),is.numeric)]))),
-                                       "Select one continuous variable(s)",placement="right",options=list(container="body"))
+                                tipify(selectInput('transvar',"Variable:",sort(names(dta_convert()[sapply(dta_convert(),is.numeric)]))),
+                                       "Select one continuous variable",placement="right",options=list(container="body"))
                                 })
+  
   output$COLUMNS <- renderUI({if(is.null(input$file)) return(NULL)
-                              tipify(selectizeInput('columns','Columns',sort(names(dta_map())),multiple=TRUE), 
+                              tipify(selectizeInput('columns','Columns',sort(names(dta_transform())),multiple=TRUE), 
                                      "Select one or more variable(s) below in desired order to keep; use backspace to undo selection(s)",
                                      placement="left",options=list(container="body"))
                               }) 
@@ -126,13 +125,25 @@ server <- (function(input, output, session) {
                           else dta <- dta_unique()
                           return(dta)
                           })
-  dta_trans <- reactive({dta <- dta_filtna()
-                        if(!is.null(input$convertcat)) dta[,input$convertcat] <- as.numeric(as.matrix(dta[,c(input$convertcat)]))
-                        if(!is.null(input$convertcon)) dta %<>% mutate_each_(funs(factor),input$convertcon)
-                        return(dta)
-                        })
- 
-  dta_filt <- reactive({dta <- dta_trans()
+  dta_convert <- reactive({ dta <- dta_filtna()
+                            if(!is.null(input$convertcat)) dta[,input$convertcat] <- as.numeric(as.matrix(dta[,c(input$convertcat)]))
+                            if(!is.null(input$convertcon)) dta %<>% mutate_each_(funs(factor),input$convertcon)
+                            return(dta)
+                            })
+  dta_transform <- reactive({ dta <- dta_convert()
+                            if(input$transform=="ABS(X)") dta %<>% mutate_(.dots=setNames(list(interp(~abs(x),
+                                                                           x=as.name(input$transvar))),input$newvar))
+                            if(input$transform=="EXP(X)") dta %<>% mutate_(.dots=setNames(list(interp(~round(exp(x),3),
+                                                                           x=as.name(input$transvar))),input$newvar))
+                            if(input$transform=="LN(X)") dta %<>% mutate_(.dots=setNames(list(interp(~round(log(x),3),
+                                                                          x=as.name(input$transvar))),input$newvar))
+                            if(input$transform=="LOG10(X)") dta %<>% mutate_(.dots=setNames(list(interp(~round(log10(x),3),
+                                                                             x=as.name(input$transvar))),input$newvar))
+                            if(input$transform=="SQRT(X)") dta %<>% mutate_(.dots=setNames(list(interp(~round(sqrt(x),3),
+                                                                            x=as.name(input$transvar))),input$newvar))
+                            return(dta)
+                          })
+  dta_filt <- reactive({dta <- dta_transform()
                         if(input$subset_type!="NONE") {
                           if(!is.null(input$columns)) dta %<>% select(one_of(paste("UNIQUE",input$columns)))
                           if(input$rows!="Enter filter condition (e.g., TIME<=24)...") dta %<>% filter_(input$rows) 
@@ -774,6 +785,5 @@ server <- (function(input, output, session) {
   })
 
  output$test <- renderPrint({sapply(dta_plot(),class)})
- output$test2 <- renderDataTable({dta_plot()
- })
+ #output$test2 <- renderDataTable({})
 })
