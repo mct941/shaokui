@@ -9,6 +9,7 @@ library(GGally)
 library(readxl)
 library(shinyBS)
 library(lazyeval)
+library(rdrop2)
 source(file.path("C:","users","mtsai","desktop","shaokui","common.r"))
 
 stat.func <-function(x) c(min(x,na.rm=T),mean(x,na.rm=T),max(x,na.rm=T))
@@ -41,6 +42,11 @@ server <- (function(input, output, session) {
   ############################################################################################################################
   ############################################################################################################################
     ### mapping variables
+  output$MAP <- renderText("Data Mapping:")
+  output$TRANS <- renderText("Data Transformation:")
+  output$SUB <- renderText("Data Subsetting:")
+  output$SORT <- renderText("Data Sorting:")
+
   output$ID <-  renderUI({if(is.null(input$file)) return(NULL)
                           tipify(selectInput("id","Subject",sort(names(inputdta())),selected="ID"),
                                  "ID is default variable name",placement="right",options=list(container="body"))
@@ -79,7 +85,10 @@ server <- (function(input, output, session) {
                                           sort(names(inputdta()[sapply(dta_map(),is.factor)]))),
                                      "Select one or more categorical variable(s)",placement="right",options=list(container="body"))
                             })
-  
+  output$TRANSFORM <- renderUI({if(is.null(input$file)) return(NULL)
+                                tipify(selectInput('transvar',"Variable:",sort(names(inputdta()[sapply(dta_map(),is.numeric)]))),
+                                       "Select one continuous variable(s)",placement="right",options=list(container="body"))
+                                })
   output$COLUMNS <- renderUI({if(is.null(input$file)) return(NULL)
                               tipify(selectizeInput('columns','Columns',sort(names(dta_map())),multiple=TRUE), 
                                      "Select one or more variable(s) below in desired order to keep; use backspace to undo selection(s)",
