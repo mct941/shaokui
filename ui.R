@@ -57,7 +57,7 @@ ui <- fluidPage(
           fluidRow(
             column(3, wellPanel(
               fileInput("file", p('Data File'), multiple=TRUE,
-                        accept=c(".csv","text/comma-separated-values,text/plain",".xls",".xlsx",".tab",".tbl",".dat")),
+                        accept=c(".csv","text/comma-separated-values,trext/plain",".tab",".tbl",".dat",".xls",".xlsx")),
               bsTooltip('file',"comma delimited file is default",placement="right",options=list(container="body")),
               hr(),
               tags$b("File Import Options:"),
@@ -113,7 +113,7 @@ ui <- fluidPage(
                   tags$li(HTML(paste(tags$b("factor:"),("count tabulation of each category"))))
                 )
               )
-              )),
+            )),
             column(9,
               #verbatimTextOutput('dim'), bsTooltip('dim',"Data dimensions","left"),
               verbatimTextOutput('structure'), bsTooltip('structure',"Data structure: variable type and initial values",
@@ -154,10 +154,9 @@ ui <- fluidPage(
             conditionalPanel("input.transform!='NONE'",
               fluidRow(column(6,uiOutput('TRANSFORM')),column(6,textInput('newvar',"New Variable"))))
           )),
-          column(3,wellPanel(
-            p(HTML(paste(tags$b("Data Subsetting:"),("Observations can be filtered and variables can be removed")))),
-            code("Caution: dataset will be modified"),
-            hr(),
+          column(4,wellPanel(
+            strong(textOutput('SUB')),bsTooltip('SUB',"Observations can be filtered and variables can be removed"),
+            code("Caution: dataset will be modified"),hr(),
             selectInput('subset_type',label="Filter by:",choices=c("NONE","COLUMN","ROW"),selected="NONE"),
             conditionalPanel("input.subset_type=='ROW'", textInput("rows","Rows","Enter filter condition (e.g., TIME<=24)...")),
             conditionalPanel("input.subset_type=='ROW'", 
@@ -172,9 +171,9 @@ ui <- fluidPage(
             conditionalPanel("input.nafilt==true", 
               bsTooltip('nafilt',"Automatically remove variables that only have missing values",options=list(container="body"))),     
             conditionalPanel("input.subset_type=='COLUMN'",uiOutput("COLUMNS"))
-          )),
-          column(3,wellPanel(
-            p(HTML(paste(tags$b("Data Sorting:"),("Order of observations can be re-ordered, based on selected variables")))),
+          ),
+          wellPanel(
+            strong(textOutput('SORT')),bsTooltip('SORT',"Order of observations can be re-ordered, based on selected variables"),
             code("Caution: dataset will be modified"),
             hr(),
             uiOutput("SORTS")
@@ -232,7 +231,7 @@ ui <- fluidPage(
               bsTooltip('data_type_tbl',placement="right",options=list(container="body"),
                 "Choose one dataset:  raw concentration data or PK parameters derived from noncompartmental analysis")
               ),
-            column(4,p("Export table"),downloadButton('exporttable', 'Download data table'),
+            column(4,downloadButton('exporttable', 'Download data table'),
               bsTooltip('exporttable',"file name is output-table.csv",options=list(container="body"))
             )
           )),  
