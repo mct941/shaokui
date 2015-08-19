@@ -126,10 +126,26 @@ ui <- fluidPage(
         ############################################################################################################################
         ############################################################################################################################
         tabPanel("Data Process",fluidRow(
-          column(3,wellPanel(
-            p(HTML(paste(tags$b("Data Mapping:"),("Appropriate variables need to be mapped to these keys")))),
+          column(4,wellPanel(
+            strong(textOutput('MAP')),bsTooltip('MAP',"Appropriate variables need to be mapped to these keys"),
             hr(),uiOutput('ID'),uiOutput('TIME'),uiOutput('DV'),conditionalPanel("input.sim==true",uiOutput('REP')),
-            uiOutput('UNIQUE'),p(HTML(paste(tags$b("Example levels of unique identifier:")))),textOutput('UNIQUEID')
+            uiOutput('UNIQUE'),p(HTML(paste(tags$b("Example levels of unique identifier:")))),textOutput('UNIQUEID'),hr(),
+            bsTooltip('processq',"see help file for data process tab",placement="right",options=list(container="body")),
+            actionButton('processq',label="",icon=icon("question-circle")),
+            bsModal('processpage',"Data Load",'processq',size="large",
+              strong("User options:"),
+              p(HTML(paste(tags$b("Data Mapping:"),"Certain key variables such as subject, time, and concentration",
+                "need to be properly mapped to the appropriate variables in the dataset.  The default variable for subject is ID;",
+                "the default variable for time is TIME; the default variable for concentration is DV;",
+                "if applicable, the default variable for replicate is REP.",
+                "If these named variables are located in the dataset, then mapping is automatic and no action is needed by user."))),
+              p("A unique identifer is required.  By default, the unique identifier is ID.",
+                "If there are multiple DV values (excluding TIME) for a given ID value, then a unique identifer needs to be defined.",
+                "For example, for a dataset containing parent and metabolite concentrations defined by different CMT values",
+                "a unique identifer may be comprised of ID and CMT.  For a dataset containing data on Days 1 and 8, a unique",
+                "identifier comprised of ID and DAY may be needed."
+                )
+            )
           )),
           column(3,wellPanel(
             p(HTML(paste(tags$b("Data Converting:"),("Variables can be converted to categorical/continuous")))),
