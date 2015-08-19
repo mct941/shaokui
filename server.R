@@ -131,20 +131,7 @@ server <- (function(input, output, session) {
                         if(!is.null(input$convertcon)) dta %<>% mutate_each_(funs(factor),input$convertcon)
                         return(dta)
                         })
-  #dta_trans <-  reactive({dta <- dta_conv()
- `                      #  if(input$transform=="ABS(X)")                    
-                        #    dta %<>% mutate_(.dots=setNames(list(interp(~abs(x),x=as.name(input$transvar))),input$newvar))
-                        #  if(input$transform=="EXP(X)")                    
-                        #    dta %<>% mutate_(.dots=setNames(list(interp(~round(exp(x),3),x=as.name(input$transvar))),input$newvar))
-                        #  if(input$transform=="LN(X)")                    
-                        #    dta %<>% mutate_(.dots=setNames(list(interp(~round(log(x),3),x=as.name(input$transvar))),input$newvar))
-                        #  if(input$transform=="LOG10(X)")                    
-                        #    dta %<>% mutate_(.dots=setNames(list(interp(~round(log10(x),3),x=as.name(input$transvar))),input$newvar))
-                        #  if(input$transform=="SQRT(X)")                    
-                        #    dta %<>% mutate_(.dots=setNames(list(interp(~round(sqrt(x),3),x=as.name(input$transvar))),input$newvar))  
-  #                        return(dta)
-  #                        })
-  
+ 
   dta_filt <- reactive({dta <- dta_trans()
                         if(input$subset_type!="NONE") {
                           if(!is.null(input$columns)) dta %<>% select(one_of(paste("UNIQUE",input$columns)))
