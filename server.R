@@ -197,9 +197,15 @@ server <- (function(input, output, session) {
                                
                                if(length(input$catvar)+length(input$convar)!=1) 
                                  p <- dta_explot() %>% ggpairs(columns=which(colnames(dta_explot()) %in% c(input$catvar,input$convar)),
-                                                               color=input$colorvar,diag=list(continuous="bar",discrete="bar"),
-                                                               upper=list(continuous="cor",discrete="ratio",combo="box"),
-                                                               lower=list(continuous="smooth",discrete="facetbar",combo="facethist"))
+                                                               color=input$colorvar,
+                                                               diag=list(continuous=tolower(input$diagcon),
+                                                                         discrete=tolower(input$diagcat)),
+                                                               upper=list(continuous=tolower(input$uppercon),
+                                                                          discrete=tolower(input$uppercat),
+                                                                          combo=tolower(input$uppercombo)),
+                                                               lower=list(continuous=tolower(input$lowercon),
+                                                                          discrete=tolower(input$lowercat),
+                                                                          combo=tolower(input$lowercombo)))
                                return(p)
                                })
   output$extable <- renderDataTable({if(is.null(input$file)) return(NULL)
