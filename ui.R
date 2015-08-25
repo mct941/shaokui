@@ -35,7 +35,8 @@ ui <- fluidPage(
             tags$li(h4(HTML(paste(tags$b("v1.8"),("calculated NCA parameters"))))),
             tags$li(h4(HTML(paste(tags$b("v1.9"),("added more summary stats"))))),
             tags$li(h4(HTML(paste(tags$b("v2.0"),("added NONMEM compatability and download capabilities"))))),
-            tags$li(h4(HTML(paste(tags$b("v2.1"),("added tooltips")))))
+            tags$li(h4(HTML(paste(tags$b("v2.1"),("added tooltips"))))),
+            tags$li(h4(HTML(paste(tags$b("v2.2"),("added help windows")))))
           ),
           br(),
           h3(HTML(paste(tags$b("Author:"),("Max Tsai")))),
@@ -56,7 +57,7 @@ ui <- fluidPage(
         tabPanel("Data Load",
           fluidRow(
             column(3, wellPanel(
-              fileInput("file", p('Data File'), multiple=TRUE,
+              fileInput("file", p('Data File:'), multiple=TRUE,
                         accept=c(".csv","text/comma-separated-values,trext/plain",".tab",".tbl",".dat",".xls",".xlsx")),
               bsTooltip('file',"comma delimited file is default",placement="right",options=list(container="body")),
               hr(),
@@ -66,7 +67,7 @@ ui <- fluidPage(
               checkboxInput("rownames", "Row names (Y/N)", FALSE), 
               bsTooltip('rownames',"Is there a column for row names?","right",options=list(container="body")),
               checkboxInput("strings", "Strings as Factors (Y/N)", FALSE), 
-              bsTooltip('strings',"Should character data be treated as categorical variables?","right",options=list(container="body")),
+              bsTooltip('strings',"Should character data be treated as categorical data?","right",options=list(container="body")),
               checkboxInput("nonmem", "NONMEM Output Table (Y/N)", FALSE), 
               bsTooltip('nonmem',"Is this a NONMEM output file?","right",options=list(container="body")),
               conditionalPanel("input.nonmem==true",checkboxInput("sim", "NONMEM Simulations with Replicates (Y/N)", FALSE)),
@@ -84,13 +85,13 @@ ui <- fluidPage(
               checkboxGroupInput('quote', 'Quote Style:',c(None='','Single Quote'="'",'Double Quote'='"'),selected='',inline=T), 
               bsTooltip('quote',"What type of quote are used for data values?","right",options=list(container="body")),
               hr(),
-              bsTooltip('loadq',"see help file for data load tab","right",options=list(container="body")),
+              bsTooltip('loadq',"see help file for Data Load Panel","right",options=list(container="body")),
               actionButton('loadq',label="",icon=icon("question-circle")),
-              bsModal('loadpage',"Data Load",'loadq',size="large",
-                strong("User options:"),
+              bsModal('loadpage',strong("Data Load"),'loadq',size="large",
+                h4("User options:"),
                 p("Data files with following extensions are automatically displayed and listed: *.csv,*.txt,*.tab,*.tbl,*.dat;",
                   "for all other file extensions, choose all files in popup file selection window;",
-                  "currently sas or excel files can not imported in their native formats and should be converted to *.txt or *.csv."),
+                  "currently sas & excel files can not imported in their native formats and should be converted to *.txt or *.csv."),
                 p("File options include importing first row as the column names, first column as row names,",
                   "character data treated as categorical variables."),
                 p("The character for a missing value can be specified; '.' is the default character."),
@@ -99,7 +100,7 @@ ui <- fluidPage(
                 p("The character for a quote style can be specified; none is the default."),
                 p("NONMEM formatted output tables including NONMEM simulations with multiple replicates can be imported."),
                 br(),
-                strong("Display output:"),
+                h4("Display output:"),
                 p("The dataset structure is displayed listing the dimensions of the dataset",
                    "and the data type for each variable along with some initial values.",
                   "A variable with all numeric values is considered to be of numeric or integer type.",
@@ -108,18 +109,20 @@ ui <- fluidPage(
                   "If character strings are treated as factor, in which case it is considered to be of factor type."),
                 p("Summary statistics of the dataset are displayed, listing the following for each variable type:"),
                 tags$ul(
-                  tags$li(HTML(paste(tags$b("character:"),("length of the variable")))),
-                  tags$li(HTML(paste(tags$b("numeric or integer:"),("minimum, 25%, median, mean, 75%, and maximum value")))),
-                  tags$li(HTML(paste(tags$b("factor:"),("count tabulation of each category"))))
+                  tags$li(HTML(paste(tags$em("character:"),("length of the variable")))),
+                  tags$li(HTML(paste(tags$em("numeric or integer:"),("minimum, 25%, median, mean, 75%, and maximum value")))),
+                  tags$li(HTML(paste(tags$em("factor:"),("count tabulation of each category"))))
                 )
               )
             )),
             column(9,
               #verbatimTextOutput('dim'), bsTooltip('dim',"Data dimensions","left"),
-              verbatimTextOutput('structure'), bsTooltip('structure',"Data structure: variable type and initial values",
-                                                         "left",,options=list(container="body")),
-              verbatimTextOutput('summary'), bsTooltip('summary',"Data summary statistics: mean, range, and percentiles for continuous and count frequency for categorical variables",
-                                                       "left",options=list(container="body"))            
+              verbatimTextOutput('structure'), verbatimTextOutput('summary'), 
+              bsTooltip('structure',"Data structure: variable type and initial values","left",options=list(container="body")),
+              bsTooltip('summary',placement="left",options=list(container="body"),
+                paste("Data summary statistics: mean, range, and percentiles for continuous variables",
+                      "and count frequency for categorical variables")
+              )            
             )
           )
         ),
@@ -128,31 +131,66 @@ ui <- fluidPage(
         tabPanel("Data Process",fluidRow(
           column(4,wellPanel(
             strong(textOutput('MAP')),bsTooltip('MAP',"Appropriate variables need to be mapped to these keys"),
-            hr(),uiOutput('ID'),uiOutput('TIME'),uiOutput('DV'),conditionalPanel("input.sim==true",uiOutput('REP')),
-            uiOutput('UNIQUE'),p(HTML(paste(tags$b("Example levels of unique identifier:")))),textOutput('UNIQUEID'),hr(),
-            bsTooltip('processq',"see help file for data process tab",placement="right",options=list(container="body")),
+            code("Caution: dataset will be modified"),hr(),uiOutput('ID'),uiOutput('TIME'),uiOutput('DV'),
+            conditionalPanel("input.sim==true",uiOutput('REP')),uiOutput('UNIQUE'),
+            p(HTML(paste(tags$b("Example levels of unique identifier:")))),textOutput('UNIQUEID'),hr(),
+            bsTooltip('processq',"see help file for Data Process Panel",placement="right",options=list(container="body")),
             actionButton('processq',label="",icon=icon("question-circle")),
-            bsModal('processpage',"Data Load",'processq',size="large",
-              strong("User options:"),
+            bsModal('processpage',strong("Data Load"),'processq',size="large",
+              p(h4("User options:")),
               p(HTML(paste(tags$b("Data Mapping:"),"Certain key variables such as subject, time, and concentration",
                 "need to be properly mapped to the appropriate variables in the dataset.  The default variable for subject is ID;",
                 "the default variable for time is TIME; the default variable for concentration is DV;",
                 "if applicable, the default variable for replicate is REP.",
                 "If these named variables are located in the dataset, then mapping is automatic and no action is needed by user."))),
-              p("A unique identifer is required.  By default, the unique identifier is ID.",
+              p("A unique identifer is required.  By default, ID is assigned to the unique identifier UNIQUE.",
                 "If there are multiple DV values (excluding TIME) for a given ID value, then a unique identifer needs to be defined.",
                 "For example, for a dataset containing parent and metabolite concentrations defined by different CMT values",
                 "a unique identifer may be comprised of ID and CMT.  For a dataset containing data on Days 1 and 8, a unique",
                 "identifier comprised of ID and DAY may be needed."
+                ),
+              p(HTML(paste(tags$b("Data Transformation:"),
+                "One or more variables can be converted from categorical to continuous and vice versa.",
+                "If variable is not found, please see Data Load panel to see how the variable was imported",
+                "Continuous variables can also be transformed to form a new variable",
+                "such as absolute value, exponential, log, natural log, or square root",
+                "Please note that only 1 new variable can be created at this time. The user needs to name this new variable."))
+                ),
+              p(HTML(paste(tags$b("Data Subsetting:"),
+                "Observations can be filtered and variables can be removed.",
+                "For columns, select variable(s) that should be retained in the dataset",
+                "For rows, enter criteria to be used to retain observations.  Standard operators include:",
+                tags$ul(
+                  tags$li(HTML(paste(tags$em("Less Than:"),(" <   ;"),tags$em("Greater Than:"),(" >")))),
+                  tags$li(HTML(paste(tags$em("Less Than or Equal to:"),("<=   ;"),tags$em("Greater Than or Equal to:"),("<=")))),
+                  tags$li(HTML(paste(tags$em("Equal to:"),(" ==   ;"),tags$em("Not Equal to:"),(" !=")))),
+                  tags$li(HTML(paste(tags$em("Is Missing:"),(" is.na()   ;"),tags$em("Is Not Missing:"),(" !is.na()")))),
+                  tags$li(HTML(paste(tags$em("Group Membership:"),(" %in%")))),
+                  tags$li(HTML(paste(tags$em("Boolean operators:"),(" &, |, !, xor, any, all"))))
                 )
+              ))),
+              p(HTML(paste(tags$b("Data Sorting:"),
+                "One or more variables can be selected to sort the dataset in ascending order",
+                "The hierarchy of the sorting variables is in the order that was selected"
+              ))),
+              br(),
+              h4("Display output:"),
+              p("See Data Table panel to view new dataset")
             )
           )),
           column(4,wellPanel(
             strong(textOutput('TRANS')),bsTooltip('TRANS',"Variables can be converted to categorical/continuous or transformed to form a new variable"),
             code("Caution: dataset will be modified"),hr(),uiOutput("CONVERTCON"),uiOutput("CONVERTCAT"), 
             selectInput('transform',"Transformation",c("NONE","ABS(X)","EXP(X)","LN(X)","LOG10(X)","SQRT(X)"),"NONE"),
+            bsTooltip('transform',"create a new variable and add to dataset",placement="right",options=list(container="body")),
             conditionalPanel("input.transform!='NONE'",
-              fluidRow(column(6,uiOutput('TRANSFORM')),column(6,textInput('newvar',"New Variable"))))
+              fluidRow(column(6,uiOutput('TRANSFORM')),
+                       column(6,
+                         textInput('newvar',"New Variable"),
+                         bsTooltip('newvar',"name the new variable",placement="right",options=list(container="body"))
+                         )
+                       )
+            )  
           )),
           column(4,wellPanel(
             strong(textOutput('SUB')),bsTooltip('SUB',"Observations can be filtered and variables can be removed"),
@@ -182,34 +220,106 @@ ui <- fluidPage(
         ############################################################################################################################
         ############################################################################################################################
         tabPanel("Data Calculate",fluidRow(
-          
-          )
+          strong("UNDER CONSTRUCTION")
+        )
         ),
         ############################################################################################################################
         ############################################################################################################################
         tabPanel("Data Explore",fluidRow(
-          column(3,wellPanel(selectInput('data_type_ex',"Dataset:",c("RAW DATA","NCA PK"),selected="RAW DATA"),
+          column(2,wellPanel(
+            selectInput('data_type_ex',"Dataset:",c("RAW DATA","NCA PK"),selected="RAW DATA"),
             bsTooltip('data_type_ex',placement="right",options=list(container="body"),
               "Choose one dataset to explore:  raw concentration data or PK parameters derived from noncompartmental analysis"),                      
             uiOutput("convars"), uiOutput("catvars"),
             conditionalPanel("data_type_ex=='RAW DATA'",checkboxInput('exid',"Group by unique identifier")),
             bsTooltip('exid',"Do you want subject-level data instead?",placement="right",options=list(container="body")),
             conditionalPanel("input.explore_type=='GRAPH'",uiOutput("colorvars"))
-          ),
+            ),
           wellPanel(
             selectInput('explore_type',"Results:",c("TABLE","GRAPH"),selected="TABLE"),
-            bsTooltip('explore_type',"Select format of exploratory results",placement="right",options=list(container="body")),
+            bsTooltip('explore_type',"Select format of exploratory results",placement="right",options=list(container="body")),         
+            bsTooltip('exploreq',"see help file for Data Explore Panel",placement="right",options=list(container="body")),
+            actionButton('exploreq',label="",icon=icon("question-circle")),
+            bsModal('explorepage',"Data Load",'exploreq',size="large",
+              p(strong("User options:")),
+              p(HTML(paste(tags$em("Dataset:"),"User has two options:",
+               "the raw concentration dataset or a dataset containing PK parameters."))),
+              tags$ul(
+                tags$li(HTML(paste(tags$b("Raw concentration dataset:"),(" the original dataset containing ID,TIME,DV")))),
+                tags$li(HTML(paste(tags$b("PK dataset:"),(" Cmax, Tmax, and AUC derived using noncompartmental methods"))))
+              ),
+              p(HTML(paste(tags$em("Results:"),"User has two output options: graphical or tabular."))),
+              tags$ul(
+                tags$li(HTML(paste(tags$b("Graph:"),(" shows distribution and correlation between variables")))),
+                tags$li(HTML(paste(tags$b("Table:"),(" User can select from the following summary statistics:")))),
+                tags$ul(
+                  tags$li(HTML(paste(tags$em("N:"),(" length of variable")))),
+                  tags$li(HTML(paste(tags$em("Mean:"),(" mean value for the variable")))),
+                  tags$li(HTML(paste(tags$em("Mean 95% CI:"),(" 95% CI of the mean value (+/-1.96*standard error)")))),
+                  tags$li(HTML(paste(tags$em("Median:"),(" median value for the variable")))),
+                  tags$li(HTML(paste(tags$em("Percent CV"),
+                    (" percent coefficient of variation (standard deviation/mean*100%)")))),
+                  tags$li(HTML(paste(tags$em("Range:"),(" range of values for the variable")))),
+                  tags$li(HTML(paste(tags$em("Percentiles:"),(" percentiles for the variable defined by slider"))))                    
+                )  
+              ),
+              p(HTML(paste(tags$em("Download:"),(" User can download summary statistics to file called output-stats.csv.")))),
+              br(),
+              p(strong("Display output:")),
+              p("Graph default display settings:"),
+              tags$ul(
+                tags$li(HTML(paste(tags$b("Diagonal:")," * continuous=histogram; * categorical=barplot"))),
+                tags$li(HTML(paste(tags$b("Upper:")," * continuous=correlation coefficient;",
+                                                     " * categorical=ratioplot; * combo=boxplot"))),
+                tags$li(HTML(paste(tags$b("Lower:")," * continuous=loess smoother;",
+                                                     " * categorical=grouped barplot; * combo=grouped histogram")))
+              )
+            )
+          )),
+          column(2, wellPanel(
             conditionalPanel("input.explore_type=='TABLE'",
-              selectInput('stat_type',"Statistic",c("N","MEAN","MEAN 95% CI","MEDIAN","PERCENT.CV","RANGE","PERCENTILES"),selected="N")),
-            conditionalPanel("input.explore_type=='TABLE'",bsTooltip('stat_type',"Select summary statistic",options=list(container="body"))),
+            bsTooltip('stat_type',"Select summary statistic",options=list(container="body"))),
+            conditionalPanel("input.explore_type=='GRAPH'",strong("Diagonal:")),
+            fluidRow(
+              column(7,
+                conditionalPanel("input.explore_type=='GRAPH'",
+                  selectInput('diagcon',"Continuous",c("DENSITY","BAR","BLANK"),selected="DENSITY"))
+              ),
+              column(5,
+                conditionalPanel("input.explore_type=='GRAPH'",
+                  selectInput('diagcat',"Categorical",c("BAR","BLANK"),selected="BAR"))
+              )
+              ),  
             conditionalPanel("input.explore_type=='TABLE'",
               sliderInput('exslid',"Percentile(s):",min=0,max=100,value=c(25,75),step=5,round=T)),
-            conditionalPanel("input.explore_type=='TABLE'",bsTooltip('exslid',"Select percentile range",options=list(container="body"))),
-            conditionalPanel("input.explore_type=='TABLE'",downloadButton('exportstats',"Download summary statistics")),
             conditionalPanel("input.explore_type=='TABLE'",
-              bsTooltip('exportstats',"file name is output-stats.csv",placement="right",options=list(container="body")))               
-          )),
-          column(9,
+              bsTooltip('exslid',"Select percentile range",options=list(container="body"))),
+            conditionalPanel("input.explore_type=='TABLE'",
+              selectInput('stat_type',"Statistic",c("N","MEAN","MEAN 95% CI","MEDIAN","PERCENT.CV","RANGE","PERCENTILES"),
+                          selected="N")),
+            conditionalPanel("input.explore_type=='TABLE'",hr()),
+            conditionalPanel("input.explore_type=='TABLE'",downloadButton('exportstats',"Download statistics")),
+            conditionalPanel("input.explore_type=='TABLE'",
+            bsTooltip('exportstats',"file name is output-stats.csv",placement="right",options=list(container="body"))),
+            conditionalPanel("input.explore_type=='GRAPH'",strong("Upper Triangle:")),
+            conditionalPanel("input.explore_type=='GRAPH'",
+              selectInput('uppercon',"Continuous",c("POINTS","SMOOTH","DENSITY","COR","BLANK"),selected="COR")),
+            conditionalPanel("input.explore_type=='GRAPH'",
+              selectInput('uppercat',"Categorical",c("FACETBAR","RATIO","BLANK"),selected="RATIO")),
+            conditionalPanel("input.explore_type=='GRAPH'",
+              selectInput('uppercombo',"Combination",c("BOX","DOT","FACETHIST","FACETDENSITY","DENSTRIP","BLANK"),
+                          selected="BOX")),
+            conditionalPanel("input.explore_type=='GRAPH'",strong("Lower Triangle:")),
+            conditionalPanel("input.explore_type=='GRAPH'",
+              selectInput('lowercon',"Continuous",c("POINTS","SMOOTH","DENSITY","COR","BLANK"),selected="SMOOTH")),        
+            conditionalPanel("input.explore_type=='GRAPH'",
+              selectInput('lowercat',"Categorical",c("FACETBAR","RATIO","BLANK"),selected="FACETBAR")),
+            conditionalPanel("input.explore_type=='GRAPH'",
+              selectInput('lowercombo',"Combination",c("BOX","DOT","FACETHIST","FACETDENSITY","DENSTRIP","BLANK"),
+                            selected="FACETHIST"))
+            )
+          ),            
+          column(8,
             conditionalPanel("input.explore_type=='GRAPH'",plotOutput('explot',height="600px")),
             conditionalPanel("input.explore_type=='GRAPH'", 
               bsPopover("explot","Scatterplot Matrix Graphs",options=list(container="body"),placement="left",
@@ -227,12 +337,35 @@ ui <- fluidPage(
         ####################################################################,########################################################
         tabPanel("Data Table",fluidRow(column(12,
           wellPanel(fluidRow(
-            column(8,selectInput('data_type_tbl',"Dataset:",c("RAW DATA","NCA PK"),selected="RAW DATA"),
+            column(2,selectInput('data_type_tbl',"Dataset:",c("RAW DATA","NCA PK"),selected="RAW DATA"),
               bsTooltip('data_type_tbl',placement="right",options=list(container="body"),
                 "Choose one dataset:  raw concentration data or PK parameters derived from noncompartmental analysis")
               ),
-            column(4,downloadButton('exporttable', 'Download data table'),
+            column(2,br(),
+              downloadButton('exporttable','Download data table'),
               bsTooltip('exporttable',"file name is output-table.csv",options=list(container="body"))
+            ),
+            column(2,
+              br(),
+              bsTooltip('tableq',"see help file for Data Table Panel",placement="right",options=list(container="body")),
+              actionButton('tableq',label="",icon=icon("question-circle")),
+              bsModal('tablepage',"Data Table",'tableq',size="large",
+                p(strong("User options:")),
+                p(HTML(paste(tags$em("Dataset:"),"User has two options:",
+                "the raw concentration dataset or a dataset containing PK parameters."))),
+                tags$ul(
+                  tags$li(HTML(paste(tags$b("Raw concentration dataset:"),(" the original dataset containing ID,TIME,DV")))),
+                  tags$li(HTML(paste(tags$b("PK dataset:"),(" Cmax, Tmax, and AUC derived using noncompartmental methods"))))
+                ),
+                p("Number of viewed rows can be selected in upper left corner.  Global search in upper right corner",
+                  "Table can be filtered by entering values under columns and",
+                  "sorted in ascending or descending order by selecting column header."),
+                br(),
+                p(strong("Display output:")),
+                p("The default table display contains all data.",
+                  "Subsets of data may be displayed, based on selected variables and filter criteria.",
+                  "New variables will also be displayed.")
+              )
             )
           )),  
           dataTableOutput('contents'),
