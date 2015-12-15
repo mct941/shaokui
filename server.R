@@ -727,7 +727,7 @@ server <- (function(input, output, session) {
 
   ### NCA for every combination
   pk <-  reactive({if(is.null(input$file)) return(NULL)
-                   dta <- dta() %>% mutate(ID=str_pad(ID,width=str_length(max(ID)),pad="0"))
+                   dta <- dta() #%>% mutate(ID=str_pad(ID,width=str_length(max(ID)),pad="0"))
                    id.list<-unique(dta$UNIQUE); time.list<-unique(dta$TIME)
                    timept.min <- 3; timept.max <- length(time.list)-1         
           
