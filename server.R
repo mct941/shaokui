@@ -9,7 +9,7 @@ library(GGally)
 library(readxl)
 library(shinyBS)
 library(lazyeval)
-library(rdrop2)
+#library(rdrop2)
 
 
 
