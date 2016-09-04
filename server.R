@@ -47,7 +47,6 @@ read.nonmem <- function(file, n=-1) {
 
 ############################################################################################################################
 ############################################################################################################################
-
 server <- (function(input, output, session) { 
   ## Load Tab
   # Read datafile (accepted file formats are csv or NONMEM output)
@@ -120,13 +119,11 @@ server <- (function(input, output, session) {
     tipify(selectInput('transvar',"Variable:",sort(names(dta_convert()[sapply(dta_convert(),is.numeric)]))),
            "Select one continuous variable",placement="right",options=list(container="body"))
   })
-  
   output$COLUMNS <- renderUI({if(is.null(input$file)) return(NULL)
     tipify(selectizeInput('columns','Columns',sort(names(dta_transform())),multiple=TRUE), 
            "Select one or more variable(s) below in desired order to keep; use backspace to undo selection(s)",
            placement="left",options=list(container="body"))
   }) 
-  
   output$SORTS <- renderUI({if(is.null(input$file)) return(NULL)
     tipify(selectizeInput('sorts','Columns',sort(names(dta_filt())),multiple=TRUE),
            "Select one or more variable(s) below in desired order to keep; use backspace to undo selection(s)",
@@ -609,15 +606,17 @@ server <- (function(input, output, session) {
     dta %<>% filter_(!is.na(input$xvar)) %>% select(-NONE,-STRATVAR,-COLORGRP,-SHAPEGRP) 
     return(dta)
   })
-  
-  output$brush_data <- renderDataTable({if(is.null(input$file)) return(NULL)
-    dta <- brushedPoints(dta_plot(), input$plot_brush)
-    dta %<>% filter_(!is.na(input$xvar)) %>% select(1:12) 
-    return(dta)
+
+    output$brush_data <- renderDataTable({if(is.null(input$file)) return(NULL)
+    dta <- brushedPoints(dta_plot(), input$plot_brush) %>% 
+           filter_(!is.na(input$xvar)) %>% 
+           select(-NONE,-STRATVAR,-COLORGRP,-SHAPEGRP)
+    out <- if(dim(dta)[2]>12) dta %>% select(1:12) else dta
+    return(out)
   })
-  
+
   ranges <- reactiveValues(x = NULL, y = NULL)
-  observeEvent(input$plot_dblclick, {
+    observeEvent(input$plot_dblclick, {
     brush <- input$plot_brush
     if (!is.null(brush)) {
       ranges$x <- c(brush$xmin, brush$xmax)
@@ -678,7 +677,6 @@ server <- (function(input, output, session) {
            "Use dropdown to select timepoint(s) if there is/are specific one(s) to include in sampling schedule",
            placement="right",options=list(container="body"))
   })
-  
   
   pos <-  reactive({time.list<-unique(dta()$TIME); timept.min <- floor(length(time.list)*0.25); timept.max <- ceiling(length(time.list)*0.75)
   time.pos <-lapply(timept.min:timept.max, function(x) combinations(length(time.list),x))
@@ -821,6 +819,6 @@ server <- (function(input, output, session) {
     }
   })
   
-  output$test <- renderDataTable({dta_pk()})
+  #output$test <- renderDataTable({brush_data()})
   #output$test2 <- renderDataTable({})
 })

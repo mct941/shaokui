@@ -220,10 +220,10 @@ ui <- fluidPage(
         )),
         ############################################################################################################################
         ############################################################################################################################
-        tabPanel("Data Calculate",fluidRow(
-          dataTableOutput('test')
-        )
-        ),
+        #tabPanel("Data Calculate",fluidRow(
+        #  dataTableOutput('test')
+        #)
+        #),
         ############################################################################################################################
         ############################################################################################################################
         tabPanel("Data Explore",fluidRow(
@@ -453,10 +453,11 @@ ui <- fluidPage(
                 bsTooltip('rev',"Change axis to reverse scale?",options=list(container="body")),
                 column(2,checkboxInput("flip","Axis X<->Y",FALSE)),
                 bsTooltip('flip',"Switch X & Y axes?",options=list(container="body")),
-                #column(2,
-                #  conditionalPanel("input.plot_type=='SCATTERPLOT'",actionButton('plotdata',"Get Data",icon=icon("search"))),
-                #  conditionalPanel("input.plot_type=='BOXPLOT'",actionButton('plotdata',"Get Data",icon=icon("search"))),
+                column(2,actionButton('show',"Get Data",icon=icon("search"))),
+                  #conditionalPanel("input.plot_type=='SCATTERPLOT'",actionButton('plotdata',"Get Data",icon=icon("search"))),
+                  #conditionalPanel("input.plot_type=='BOXPLOT'",actionButton('plotdata',"Get Data",icon=icon("search"))),
                 #),
+                bsTooltip('show',"Show selected data",options=list(container="body")),
                 column(2,downloadButton("exportplot","Download plot")),
                 bsTooltip('exportplot',"file name is output-figure.png",options=list(container="body")),
                 column(2,actionButton('plotq',label="",icon=icon("question-circle"))),
@@ -516,7 +517,7 @@ ui <- fluidPage(
                 "Highlight section to select datapoint(s); Double-click to zoom in and out"),
               #bsTooltip('plotdata',"Identify selected datapoints",options=list(container="body")),
               bsModal('plotdatatable',"Selected datapoints (only 1st 12 variables are shown)",
-                      'plot',size="large",dataTableOutput('brush_data'))
+                      'show',size="large",dataTableOutput('brush_data'))
               #verbatimTextOutput('brush_info')
               ))
             )
